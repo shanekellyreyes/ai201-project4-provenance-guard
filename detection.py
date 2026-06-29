@@ -94,3 +94,21 @@ def combine_scores(llm_score, stylo_score):
         combined = 0.74
     combined = round(_clamp(combined), 3)
     return combined, classify(combined), False
+
+# ---------- Transparency labels ----------
+def make_label(attribution, confidence):
+    pct = round(confidence * 100)
+    human_pct = 100 - pct
+    if attribution == "likely_ai":
+        return (f"🤖 Likely AI-generated ({pct}% AI-likelihood). Our automated "
+                "check found strong signals that this text was produced by an AI "
+                "system. This is an automated estimate, not a certainty — the "
+                "creator can appeal this label if they believe it's wrong.")
+    if attribution == "likely_human":
+        return (f"✍️ Likely human-written ({human_pct}% human-likelihood). Our "
+                "automated check found this text reads as human-written. This is "
+                "an automated estimate and not a guarantee of authorship.")
+    return (f"❓ Authorship uncertain ({pct}% AI-likelihood). Our automated check "
+            "could not confidently determine whether this text was written by a "
+            "human or an AI. We are showing this honestly rather than guessing. "
+            "Treat the author's own attribution as the default.")
