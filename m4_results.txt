@@ -1,0 +1,4 @@
+clear_ai       llm=0.8 stylo=0.442 -> 0.675 (uncertain)
+clear_human    llm=0.2 stylo=0.141 -> 0.179 (likely_human)
+formal_human   llm=0.7 stylo=0.666 -> 0.688 (uncertain)
+edited_ai      llm=0.2 stylo=0.436 -> 0.283 (likely_human)
