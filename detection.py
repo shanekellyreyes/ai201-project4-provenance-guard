@@ -35,13 +35,62 @@ def llm_signal(text):
     except Exception as e:
         return {"score": None, "reasoning": "", "error": f"{type(e).__name__}: {e}"}
 
-# ---- M3 TEMPORARY STUBS (replaced in M4/M5) ----
+
+import statistics
+
+# ---------- Signal 2: Stylometric ----------
+def _sentences(text):
+    return [p.strip() for p in re.split(r"[.!?]+", text) if p.strip()]
+
+def _words(text):
+    return re.findall(r"\b\w+\b", text.lower())
+
 def stylometric_signal(text):
-    return {"score": 0.5, "metrics": {}}
+    words, sents = _words(text), _sentences(text)
+    n_words = len(words)
+    metrics = {}
+
+    # 1. Burstiness: coefficient of variation of sentence lengths (in words)
+    lengths = [len(_words(s)) for s in sents] or [0]
+    mean_len = statistics.mean(lengths) if lengths else 0
+    cv = (statistics.pstdev(lengths) / mean_len) if (len(lengths) > 1 and mean_len) else 0.0
+    burst = _clamp((0.6 - cv) / 0.4)          # low variance -> AI
+
+    # 2. Type-token ratio (vocabulary diversity)
+    ttr = (len(set(words)) / n_words) if n_words else 0.0
+    ttr_c = _clamp((0.75 - ttr) / 0.35)       # low diversity -> AI
+
+    # 3. Punctuation density
+    punct = len(re.findall(r"[,;:\-—()\"']", text))
+    pdens = (punct / n_words) if n_words else 0.0
+    punct_c = _clamp((0.18 - pdens) / 0.18)   # flat/sparse -> mildly AI
+
+    score = round(_clamp(0.60 * burst + 0.25 * ttr_c + 0.15 * punct_c), 3)
+    metrics.update({
+        "sentence_count": len(sents), "mean_sentence_length": round(mean_len, 2),
+        "sentence_length_cv": round(cv, 3), "type_token_ratio": round(ttr, 3),
+        "punctuation_density": round(pdens, 3),
+        "burst_component": round(burst, 3), "ttr_component": round(ttr_c, 3),
+        "punct_component": round(punct_c, 3)})
+    return {"score": score, "metrics": metrics}
+
+# ---------- Confidence scoring ----------
+LIKELY_AI, LIKELY_HUMAN = 0.75, 0.40
+
+def classify(confidence):
+    if confidence >= LIKELY_AI:   return "likely_ai"
+    if confidence < LIKELY_HUMAN: return "likely_human"
+    return "uncertain"
 
 def combine_scores(llm_score, stylo_score):
-    c = round(llm_score if llm_score is not None else 0.5, 3)
-    return c, ("likely_ai" if c >= 0.75 else "likely_human" if c < 0.40 else "uncertain"), llm_score is None
-
-def make_label(attribution, confidence):
-    return f"[stub] {attribution} ({round(confidence*100)}%)"
+    """Returns (confidence, attribution, degraded)."""
+    if llm_score is None:
+        # Degraded: one signal only. Never emit a high-confidence verdict.
+        c = round(_clamp(0.40 + (stylo_score - 0.5) * 0.3), 3)
+        return c, classify(c), True
+    combined = 0.65 * llm_score + 0.35 * stylo_score
+    # False-positive guard: don't call it AI unless BOTH signals lean AI.
+    if stylo_score < 0.5 and combined >= LIKELY_AI:
+        combined = 0.74
+    combined = round(_clamp(combined), 3)
+    return combined, classify(combined), False
